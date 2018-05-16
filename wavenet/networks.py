@@ -9,52 +9,37 @@ References :
 """
 import torch
 import numpy as np
+import torch.nn as nn
+import torch.nn.functional as F
 
 from wavenet.exceptions import InputSizeError
 
+class CausalConv1d(nn.Conv1d):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size=2,
+                 stride=1,
+                 dilation=1,
+                 groups=1,
+                 bias=False):
+        super(CausalConv1d, self).__init__(
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=stride,
+            padding=0,
+            dilation=dilation,
+            groups=groups,
+            bias=bias)
 
-class DilatedCausalConv1d(torch.nn.Module):
-    """Dilated Causal Convolution for WaveNet"""
-    def __init__(self, channels, dilation=1):
-        super(DilatedCausalConv1d, self).__init__()
+        self.left_padding = dilation * (kernel_size - 1)
 
-        self.conv = torch.nn.Conv1d(channels, channels,
-                                    kernel_size=2, stride=1,  # Fixed for WaveNet
-                                    dilation=dilation,
-                                    padding=0,  # Fixed for WaveNet dilation
-                                    bias=False)  # Fixed for WaveNet but not sure
+    def forward(self, input):
+        x = super(CausalConv1d, self).forward(input)
+        x = F.pad(x.unsqueeze(2), (self.left_padding, 0, 0, 0)).squeeze(2)
 
-    def init_weights_for_test(self):
-        for m in self.modules():
-            if isinstance(m, torch.nn.Conv1d):
-                m.weight.data.fill_(1)
-
-    def forward(self, x):
-        output = self.conv(x)
-
-        return output
-
-
-class CausalConv1d(torch.nn.Module):
-    """Causal Convolution for WaveNet"""
-    def __init__(self, in_channels, out_channels):
-        super(CausalConv1d, self).__init__()
-
-        # padding=1 for same size(length) between input and output for causal convolution
-        self.conv = torch.nn.Conv1d(in_channels, out_channels,
-                                    kernel_size=2, stride=1, padding=1,
-                                    bias=False)  # Fixed for WaveNet but not sure
-
-    def init_weights_for_test(self):
-        for m in self.modules():
-            if isinstance(m, torch.nn.Conv1d):
-                m.weight.data.fill_(1)
-
-    def forward(self, x):
-        output = self.conv(x)
-
-        # remove last value for causal convolution
-        return output[:, :, :-1]
+        return x
 
 
 class ResidualBlock(torch.nn.Module):
@@ -67,12 +52,14 @@ class ResidualBlock(torch.nn.Module):
         """
         super(ResidualBlock, self).__init__()
 
-        self.dilated = DilatedCausalConv1d(res_channels, dilation=dilation)
+        self.dilated = CausalConv1d(res_channels, res_channels, dilation=dilation)
         self.conv_res = torch.nn.Conv1d(res_channels, res_channels, 1)
         self.conv_skip = torch.nn.Conv1d(res_channels, skip_channels, 1)
 
         self.gate_tanh = torch.nn.Tanh()
         self.gate_sigmoid = torch.nn.Sigmoid()
+        self.tconv = torch.nn.Conv1d(res_channels, res_channels, 2)
+        self.sconv = torch.nn.Conv1d(res_channels, res_channels, 2)
 
     def forward(self, x, skip_size):
         """
@@ -83,8 +70,8 @@ class ResidualBlock(torch.nn.Module):
         output = self.dilated(x)
 
         # PixelCNN gate
-        gated_tanh = self.gate_tanh(output)
-        gated_sigmoid = self.gate_sigmoid(output)
+        gated_tanh = self.gate_tanh(self.tconv(output))
+        gated_sigmoid = self.gate_sigmoid(self.sconv(output))
         gated = gated_tanh * gated_sigmoid
 
         # Residual network
