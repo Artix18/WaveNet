@@ -36,8 +36,10 @@ class CausalConv1d(nn.Conv1d):
         self.left_padding = dilation * (kernel_size - 1)
 
     def forward(self, input):
-        x = super(CausalConv1d, self).forward(input)
+        
+        #c'est en fait plus joli de padder l'entree
         x = F.pad(x.unsqueeze(2), (self.left_padding, 0, 0, 0)).squeeze(2)
+        x = super(CausalConv1d, self).forward(input) 
 
         return x
 
@@ -52,7 +54,8 @@ class ResidualBlock(torch.nn.Module):
         """
         super(ResidualBlock, self).__init__()
 
-        self.dilated = CausalConv1d(res_channels, res_channels, dilation=dilation)
+        self.dilated1 = CausalConv1d(res_channels, res_channels, dilation=dilation)
+        self.dilated2 = CausalConv1d(res_channels, res_channels, dilation=dilation)
         self.conv_res = torch.nn.Conv1d(res_channels, res_channels, 1)
         self.conv_skip = torch.nn.Conv1d(res_channels, skip_channels, 1)
 
@@ -67,11 +70,12 @@ class ResidualBlock(torch.nn.Module):
         :param skip_size: The last output size for loss and prediction
         :return:
         """
-        output = self.dilated(x)
+        output1 = self.dilated1(x)
+        output2 = self.dilated2(x)
 
         # PixelCNN gate
-        gated_tanh = self.gate_tanh(self.tconv(output))
-        gated_sigmoid = self.gate_sigmoid(self.sconv(output))
+        gated_tanh = self.gate_tanh(output1)
+        gated_sigmoid = self.gate_sigmoid(output2)
         gated = gated_tanh * gated_sigmoid
 
         # Residual network
@@ -231,13 +235,15 @@ class WaveNet(torch.nn.Module):
 
         output_size = self.calc_output_size(output)
 
-        output = self.causal(output)
+        #not in TC
+        #output = self.causal(output)
 
         skip_connections = self.res_stack(output, output_size)
 
         output = torch.sum(skip_connections, dim=0)
 
-        output = self.densnet(output)
+        #not in TC
+        #output = self.densnet(output)
 
         return output.transpose(1, 2).contiguous()
 
