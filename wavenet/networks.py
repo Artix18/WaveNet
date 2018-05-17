@@ -22,7 +22,7 @@ class CausalConv1d(nn.Conv1d):
                  stride=1,
                  dilation=1,
                  groups=1,
-                 bias=False):
+                 bias=True):
         super(CausalConv1d, self).__init__(
             in_channels,
             out_channels,
@@ -38,8 +38,8 @@ class CausalConv1d(nn.Conv1d):
     def forward(self, input):
         
         #c'est en fait plus joli de padder l'entree
-        x = F.pad(x.unsqueeze(2), (self.left_padding, 0, 0, 0)).squeeze(2)
-        x = super(CausalConv1d, self).forward(input) 
+        x = F.pad(input.unsqueeze(2), (self.left_padding, 0, 0, 0)).squeeze(2)
+        x = super(CausalConv1d, self).forward(x) 
 
         return x
 
@@ -61,8 +61,8 @@ class ResidualBlock(torch.nn.Module):
 
         self.gate_tanh = torch.nn.Tanh()
         self.gate_sigmoid = torch.nn.Sigmoid()
-        self.tconv = torch.nn.Conv1d(res_channels, res_channels, 2)
-        self.sconv = torch.nn.Conv1d(res_channels, res_channels, 2)
+        #self.tconv = torch.nn.Conv1d(res_channels, res_channels, 2)
+        #self.sconv = torch.nn.Conv1d(res_channels, res_channels, 2)
 
     def forward(self, x, skip_size):
         """
