@@ -1,7 +1,5 @@
 import time
 import torch
-#import librosa
-#import datetime
 import numpy as np
 import ipdb
 
@@ -13,10 +11,6 @@ import wavenet.utils.data as utils
 
 
 lang = """
-def tensordot(float(N, C1, C2, H, W) I0, float(N, C2, C3, H, W) I1) -> (O) {
-    O(n, c1, c3, h, w) +=! I0(n, c1, c2, h, w) * I1(n, c2, c3, h, w)
-}
-
 def wavenet1(
     float(B, RESIDUAL_C, RECEPTIVE_FIELD) Data,
     float(DILATION_C, RESIDUAL_C, 2) FilterWeight,
@@ -91,7 +85,8 @@ SkipBias = wavenet.net.module.res_stack.res_blocks[0].module.conv_skip.bias
 
 import tensor_comprehensions as tc
 tcwavenet = tc.define(lang, name="wavenet1")
-out = tcwavenet(Data, FilterWeight, GateWeight, FilterBias, GateBias, ResWeight, ResBias, SkipWeight, SkipBias, Dilation)#, options=best_options)
+best_options = tcwavenet.autotune(Data, FilterWeight, GateWeight, FilterBias, GateBias, ResWeight, ResBias, SkipWeight, SkipBias, Dilation)
+out = tcwavenet(Data, FilterWeight, GateWeight, FilterBias, GateBias, ResWeight, ResBias, SkipWeight, SkipBias, Dilation, options=best_options)
 
 #for name, param in wavenet.net.module.res_stack.res_blocks[0].state_dict().items():
 #    print(name, param.size())
@@ -99,15 +94,11 @@ out = tcwavenet(Data, FilterWeight, GateWeight, FilterBias, GateBias, ResWeight,
 dataWavenet = Data.permute(0,2,1)
 out2 = wavenet.generate(dataWavenet)
 
-print(out2.shape)
-
-print("cc")
-
-for truc in out:
-    print(truc.shape)
+#print(out2.shape)
+#for truc in out:
+#    print(truc.shape)
 
 #print(out[-1][:,:,1:])
-#print("lol")
 #print(out2.permute(0,2,1))
 
 out = out[-1][:,:,1:]
@@ -120,17 +111,22 @@ print("erreur relative moyenne :")
 diff = torch.abs((out - out2) / out2)
 print(diff.mean())
 
+print("Tapez C pour passer au benchmarking")
+ipdb.set_trace()
+
 warmup = 100
 iters=1000
 for i in range(warmup):
-    tcwavenet(Data)
+    tcwavenet(Data, FilterWeight, GateWeight, FilterBias, GateBias, ResWeight, ResBias, SkipWeight, SkipBias, Dilation, options=best_options)
+    #tcwavenet(Data, options=best_options)
     torch.cuda.synchronize()
 
 liste_t_tc = []
 now = time.clock()
 for i in range(iters):
     before = time.clock()
-    tcwavenet(Data)
+    tcwavenet(Data, FilterWeight, GateWeight, FilterBias, GateBias, ResWeight, ResBias, SkipWeight, SkipBias, Dilation, options=best_options)
+    #tcwavenet(Data)
     torch.cuda.synchronize()
     after = time.clock()
     liste_t_tc.append(after - before)
